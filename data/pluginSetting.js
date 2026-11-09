@@ -351,28 +351,296 @@ export const defaultSettings = await switchLanguage('__defaultSettings__', {
      */
     tableStructure: [
         {
-            tableName: "时空表格", tableIndex: 0, columns: ['日期', '时间', '地点（当前描写）', '此地角色'], enable: true, Required: true, asStatus: true, toChat: true, note: "记录时空信息的表格，应保持在一行",
-            initNode: '本轮需要记录当前时间、地点、人物信息，使用insertRow函数', updateNode: "当描写的场景，时间，人物变更时", deleteNode: "此表大于一行时应删除多余行",
+            "tableIndex": 0,
+            "tableName": "时空表格",
+            "columns": [
+                "日期",
+                "时间",
+                "地点（当前描写）",
+                "此地角色"
+            ],
+            "note": "记录时空信息的表格，应保持在一行",
+            "initNode": "本轮需要记录当前时间、地点、人物信息，使用insertRow函数",
+            "deleteNode": "此表大于一行时应删除多余行",
+            "updateNode": "当描写的场景，时间，人物变更时",
+            "config": {
+                "toChat": true,
+                "useCustomStyle": false,
+                "triggerSendToChat": false,
+                "alternateTable": false,
+                "insertTable": false,
+                "alternateLevel": 0,
+                "skipTop": false,
+                "selectedCustomStyleKey": "",
+                "customStyles": {
+                    "自定义样式": {
+                        "mode": "regex",
+                        "basedOn": "html",
+                        "regex": "/(^[\\s\\S]*$)/g",
+                        "replace": "$1",
+                        "replaceDivide": ""
+                    }
+                }
+            },
+            "Required": true,
+            "tochat": true,
+            "enable": true,
+            "triggerSend": false,
+            "triggerSendDeep": 1
         },
         {
-            tableName: '角色特征表格', tableIndex: 1, columns: ['角色名', '身体特征', '性格', '职业', '爱好', '喜欢的事物（作品、虚拟人物、物品等）', '住所', '其他重要信息'], enable: true, Required: true, asStatus: true, toChat: true, note: '角色天生或不易改变的特征csv表格，思考本轮有否有其中的角色，他应作出什么反应',
-            initNode: '本轮必须从上文寻找已知的所有角色使用insertRow插入，角色名不能为空', insertNode: '当本轮出现表中没有的新角色时，应插入', updateNode: "当角色的身体出现持久性变化时，例如伤痕/当角色有新的爱好，职业，喜欢的事物时/当角色更换住所时/当角色提到重要信息时", deleteNode: "",
+            "tableIndex": 1,
+            "tableName": "角色特征表格",
+            "columns": [
+                "角色名",
+                "身体特征",
+                "角色设定",
+                "上身衣物",
+                "下身衣物",
+                "身高",
+                "胸部大小",
+                "说话方式",
+                "给人的印象",
+                "性格描述",
+                "心理状态",
+                "喜欢的事物",
+                "讨厌的事物",
+                "其他重要信息",
+                "特征总结",
+                "是否怀孕"
+            ],
+            "note": "角色天生或不易改变的特征csv表格，思考本轮有否有其中的角色，他应作出什么反应。胸部大小用字母表示（A~H）,男性则填无.\n​关于性格的填写规则：\n​核心本性：仅填写角色不变的底层逻辑（如：正义、自私、虚无主义）。除非剧情发生重大转折，否则禁止修改此列。\n​心理状态：角色当下的情绪、心理活动、对待外界的态度。随场景实时更新。\n没有内容时则填无。",
+            "initNode": "本轮必须从上文寻找已知的所有角色使用insertRow插入，角色名不能为空",
+            "deleteNode": "",
+            "updateNode": "当角色的身体出现持久性变化时，例如伤痕/当角色有新的爱好，职业，喜欢的事物时/当角色更换住所时/当角色提到重要信息时",
+            "insertNode": "当本轮出现表中没有的新角色时，应插入",
+            "config": {
+                "toChat": true,
+                "useCustomStyle": true,
+                "triggerSendToChat": false,
+                "alternateTable": false,
+                "insertTable": false,
+                "skipTop": false,
+                "alternateLevel": "0",
+                "selectedCustomStyleKey": "自定义样式",
+                "customStyles": {
+                    "自定义样式": {
+                        "mode": "regex",
+                        "basedOn": "html",
+                        "regex": "/(^[\\s\\S]*$)/g",
+                        "replace": "$1"
+                    }
+                }
+            },
+            "Required": true,
+            "tochat": true,
+            "enable": true,
+            "triggerSend": false,
+            "triggerSendDeep": 1
         },
         {
-            tableName: '角色与<user>社交表格', tableIndex: 2, columns: ['角色名', '对<user>关系', '对<user>态度', '对<user>好感'], enable: true, Required: true, asStatus: true, toChat: true, note: '思考如果有角色和<user>互动，应什么态度',
-            initNode: '本轮必须从上文寻找已知的所有角色使用insertRow插入，角色名不能为空', insertNode: '当本轮出现表中没有的新角色时，应插入', updateNode: "当角色和<user>的交互不再符合原有的记录时/当角色和<user>的关系改变时", deleteNode: "",
+            "tableIndex": 2,
+            "tableName": "角色与<user>社交表格",
+            "columns": [
+                "角色名",
+                "角色对<user>关系",
+                "<user>对角色关系",
+                "角色对<user>态度",
+                "<user>对角色态度",
+                "角色对<user>好感",
+                "<user>对角色的认知定位"
+            ],
+            "note": "思考如果有角色和<user>或者<user>和角色互动，应什么态度",
+            "initNode": "本轮必须从上文寻找已知的所有角色使用insertRow插入，角色名不能为空",
+            "deleteNode": "",
+            "updateNode": "当角色和<user>的交互不再符合原有的记录时/当角色和<user>的关系改变时",
+            "insertNode": "当本轮出现表中没有的新角色时，应插入",
+            "config": {
+                "toChat": true,
+                "useCustomStyle": false,
+                "triggerSendToChat": false,
+                "alternateTable": false,
+                "insertTable": false,
+                "alternateLevel": 0,
+                "skipTop": false,
+                "selectedCustomStyleKey": "",
+                "customStyles": {
+                    "自定义样式": {
+                        "mode": "regex",
+                        "basedOn": "html",
+                        "regex": "/(^[\\s\\S]*$)/g",
+                        "replace": "$1",
+                        "replaceDivide": ""
+                    }
+                }
+            },
+            "Required": true,
+            "tochat": true,
+            "enable": true,
+            "triggerSend": false,
+            "triggerSendDeep": 1
         },
         {
-            tableName: '任务、命令或者约定表格', tableIndex: 3, columns: ['角色', '任务', '地点', '持续时间'], enable: true, Required: false, asStatus: true, toChat: true, note: '思考本轮是否应该执行任务/赴约',
-            insertNode: '当特定时间约定一起去做某事时/某角色收到做某事的命令或任务时', updateNode: "", deleteNode: "当大家赴约时/任务或命令完成时/任务，命令或约定被取消时",
+            "tableIndex": 3,
+            "tableName": "<user>任务、目标或者约定表格",
+            "columns": [
+                "角色",
+                "任务",
+                "任务类型",
+                "详细描述",
+                "持续时间",
+                "截止时间",
+                "当前状态",
+                "是否完成",
+                "完成后的影响"
+            ],
+            "note": "用来记录剧情事件中出现的所有任务、目标和约定事件。重点记录 <user> 自己立下的目标和心愿。必须明确标注任务类型（短期任务 / 长期目标 / 个人心愿 / 约定 / 主线目标 等），并实时更新当前状态。完成后的影响要尽量具体（奖励、惩罚、剧情推进、角色关系变化、心理影响等）。此表是规范 <user> 目标和维持长期剧情连贯性的重要工具。",
+            "initNode": "本轮必须从上文中寻找所有已存在的任务、目标和约定，使用 insertRow 插入到表格中。特别注意 <user> 自己立下的任何目标和心愿也要记录。初始化时要把任务类型、当前状态（一般为“进行中”或“未开始”）和已知的影响尽可能填写完整。",
+            "deleteNode": "",
+            "updateNode": "当出现以下情况时，使用 updateRow 更新对应行：\n- 任务/目标状态发生变化（进行中 → 已完成 / 已失败 / 已放弃）\n- 任务内容、截止时间或详细描述有重要更新\n- 明确了完成后的具体影响（奖励、惩罚、关系变化、剧情推进等）\n- <user> 对某个目标的进度或态度发生变化\n\n更新时优先更新「当前状态」和「完成后的影响」两列，让表格始终保持最新状态。",
+            "insertNode": "当出现以下情况时，必须使用 insertRow 新增一行记录：\n- 剧情中出现新的任务、目标或重要约定\n- <user> 或角色立下新的目标（尤其是长期目标和个人心愿）\n- NPC 给 <user> 或其他角色下达任务\n- 出现有明确截止时间或重要影响的约定\n\n插入时必须填写：任务类型、详细描述、当前状态（默认为“进行中”或“未开始”），并尽量填写完成后的影响（奖励、惩罚、剧情变化等）。如果暂时不清楚影响，可以先写“待定”或简要描述预期结果。",
+            "config": {
+                "toChat": true,
+                "useCustomStyle": false,
+                "triggerSendToChat": false,
+                "alternateTable": false,
+                "insertTable": false,
+                "skipTop": false,
+                "alternateLevel": "0",
+                "selectedCustomStyleKey": "自定义样式",
+                "customStyles": {
+                    "自定义样式": {
+                        "mode": "regex",
+                        "basedOn": "html",
+                        "regex": "/(^[\\s\\S]*$)/g",
+                        "replace": "$1"
+                    }
+                }
+            },
+            "Required": false,
+            "tochat": true,
+            "enable": true,
+            "triggerSend": false,
+            "triggerSendDeep": 1
         },
         {
-            tableName: '重要事件历史表格', tableIndex: 4, columns: ['角色', '事件简述', '日期', '地点', '情绪'], enable: true, Required: true, asStatus: true, toChat: true, note: '记录<user>或角色经历的重要事件',
-            initNode: '本轮必须从上文寻找可以插入的事件并使用insertRow插入', insertNode: '当某个角色经历让自己印象深刻的事件时，比如表白、分手等', updateNode: "", deleteNode: "",
+            "tableIndex": 4,
+            "tableName": "剧情发展日志",
+            "columns": [
+                "剧情编号",
+                "主要角色",
+                "事件描述",
+                "事件类型",
+                "日期",
+                "地点",
+                "相关的任务"
+            ],
+            "note": "用来记录剧情的顺序发展日志。通过剧情编号形成清晰的时间线和因果链。每轮对话只记录一次当前最核心的剧情发展。必须使用剧情编号（自增），并简要描述本轮发生了什么（控制在100字以内）。可关联相关任务，便于AI回顾前因后果、理解剧情脉络，从而更好地推进后续故事。记录时使用正常标点符号，不要使用竖线 | 作为分隔符。",
+            "initNode": "本轮必须检查「剧情发展日志」中已有的最大剧情编号。如果表格为空，则从编号1开始；如果已有记录，则新编号 = 最大编号 + 1。使用 insertRow 将本轮最核心的剧情发展插入表格。必须填写剧情编号、事件描述（简洁总结本轮主要发生的事）、事件类型，并尽可能关联相关的任务。",
+            "deleteNode": "原则上不删除此表中的记录，以保持完整的剧情时间线。除非玩家明确要求删除某段剧情记录，否则不要删除任何行。",
+            "updateNode": "一般情况下不更新旧的剧情编号记录（保持历史完整性）。只有在以下情况才允许更新最新一行：\n- 本轮剧情有重要补充或修正\n- 需要更正事件类型或关联的任务\n- 事件描述需要更准确地反映本轮发生的事\n\n更新时优先保持剧情编号不变，只修改描述、类型或关联任务。",
+            "insertNode": "每一轮对话只允许新增一行记录。插入时必须严格遵守以下规则：\n\n1. 剧情编号 = 当前表格中的最大编号 + 1（自增）\n2. 事件描述 = 用简洁的语言总结本轮最核心的剧情发展（不超过100字），使用正常标点符号\n3. 事件类型 = 从以下选项中选择：日常推进 / 情感发展 / 关系转折 / 战斗 / 任务相关 / 重要发现 / 其他\n4. 尽可能填写“相关的任务”（如果本轮剧情和第3个表格中的任务有关联）\n5. 日期和地点根据当前剧情填写\n\n此表的作用是让AI能通过编号快速回顾剧情前因后果，从而写出更连贯的后续发展。",
+            "config": {
+                "toChat": true,
+                "useCustomStyle": false,
+                "triggerSendToChat": false,
+                "alternateTable": false,
+                "insertTable": false,
+                "skipTop": false,
+                "alternateLevel": "0",
+                "selectedCustomStyleKey": "自定义样式",
+                "customStyles": {
+                    "自定义样式": {
+                        "mode": "regex",
+                        "basedOn": "html",
+                        "regex": "/(^[\\s\\S]*$)/g",
+                        "replace": "$1"
+                    }
+                }
+            },
+            "Required": true,
+            "tochat": true,
+            "enable": true,
+            "triggerSend": false,
+            "triggerSendDeep": 1
         },
         {
-            tableName: '重要物品表格', tableIndex: 5, columns: ['拥有人', '物品描述', '物品名', '重要原因'], enable: true, Required: false, asStatus: true, toChat: true, note: '对某人很贵重或有特殊纪念意义的物品',
-            insertNode: '当某人获得了贵重或有特殊意义的物品时/当某个已有物品有了特殊意义时', updateNode: "", deleteNode: "",
+            "tableIndex": 5,
+            "tableName": "重要物品表格",
+            "columns": [
+                "物品描述",
+                "物品名",
+                "重要原因"
+            ],
+            "note": "对某人很贵重或有特殊纪念意义的物品",
+            "deleteNode": "",
+            "updateNode": "",
+            "insertNode": "当某人获得了贵重或有特殊意义的物品时/当某个已有物品有了特殊意义时",
+            "config": {
+                "toChat": true,
+                "useCustomStyle": false,
+                "triggerSendToChat": false,
+                "alternateTable": false,
+                "insertTable": false,
+                "alternateLevel": 0,
+                "skipTop": false,
+                "selectedCustomStyleKey": "",
+                "customStyles": {
+                    "自定义样式": {
+                        "mode": "regex",
+                        "basedOn": "html",
+                        "regex": "/(^[\\s\\S]*$)/g",
+                        "replace": "$1",
+                        "replaceDivide": ""
+                    }
+                }
+            },
+            "Required": false,
+            "tochat": true,
+            "enable": true,
+            "triggerSend": false,
+            "triggerSendDeep": 1
         },
+        {
+            "tableIndex": 6,
+            "tableName": "重要事件历史表格",
+            "columns": [
+                "角色",
+                "事件简述",
+                "事件类型",
+                "影响描述",
+                "日期",
+                "地点"
+            ],
+            "note": "记录<user>或角色经历的重要事件",
+            "initNode": "本轮必须从上文寻找可以插入的事件并使用insertRow插入",
+            "deleteNode": "",
+            "updateNode": "",
+            "insertNode": "当某个角色经历让自己印象深刻的事件时，比如表白、分手等",
+            "config": {
+                "toChat": true,
+                "useCustomStyle": false,
+                "triggerSendToChat": false,
+                "alternateTable": false,
+                "insertTable": false,
+                "alternateLevel": 0,
+                "skipTop": false,
+                "selectedCustomStyleKey": "",
+                "customStyles": {
+                    "自定义样式": {
+                        "mode": "regex",
+                        "basedOn": "html",
+                        "regex": "/(^[\\s\\S]*$)/g",
+                        "replace": "$1",
+                        "replaceDivide": ""
+                    }
+                }
+            },
+            "Required": true,
+            "tochat": true,
+            "enable": false,
+            "triggerSend": false,
+            "triggerSendDeep": 1
+        }
     ],
 });
