@@ -239,3 +239,25 @@ test('external adapter reports a failed asynchronous save', async () => {
     assert.equal(result.success, false);
     assert.match(result.message, /保存失败/);
 });
+
+test('reply-mode read and write switches expose only the requested table information', async () => {
+    const source = read('index.js');
+    const promptFns = cut(source, 'export function initTableData(', '/**\n * 拆分参数').replace(/^export /gm, '');
+    const injectFn = cut(source, 'async function onChatCompletionPromptReady(', '/**\n  * 宏获取提示词');
+    const sheet = { enable: true, getTableText: (_i, parts) => ['SCHEMA', ...(parts.includes('rows') ? ['PRIVATE-ROW'] : []), ...(parts.includes('editRules') ? ['RULE'] : [])].join(' ') };
+    const setting = { isExtensionAble: true, isAiReadTable: false, isAiWriteTable: true, step_by_step: false, injection_mode: 'deep_system', deep: 0, message_template: 'FILL {{tableData}}' };
+    const ctx = { USER: { tableBaseSetting: setting }, BASE: { getReferencePiece: () => ({ hash_sheets: {} }), hashSheetsToSheets: () => [sheet] },
+        EDITOR: { error: (...x) => { throw new Error(x.join(' ')); } }, replaceUserTag: x => x, getMesRole: () => 'system', updateSheetsView() {}, console: quiet };
+    vm.createContext(ctx);
+    vm.runInContext(`'use strict'; ${promptFns}\n${injectFn}\nthis.inject = onChatCompletionPromptReady;`, ctx);
+    let event = { chat: [] }; await ctx.inject(event);
+    assert.match(event.chat[0].content, /SCHEMA.*RULE/);
+    assert.doesNotMatch(event.chat[0].content, /PRIVATE-ROW/);
+    setting.isAiReadTable = true; setting.isAiWriteTable = false;
+    event = { chat: [] }; await ctx.inject(event);
+    assert.match(event.chat[0].content, /PRIVATE-ROW/);
+    assert.doesNotMatch(event.chat[0].content, /RULE|FILL/);
+    setting.isAiReadTable = false;
+    event = { chat: [] }; await ctx.inject(event);
+    assert.equal(event.chat.length, 0);
+});

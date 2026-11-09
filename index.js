@@ -175,20 +175,20 @@ export function findNextChatWhitTableData(startIndex, isIncludeStartIndex = fals
  * 搜寻最后一个含有表格数据的消息，并生成提示词
  * @returns 生成的完整提示词
  */
-export function initTableData(eventData) {
-    const allPrompt = USER.tableBaseSetting.message_template.replace('{{tableData}}', getTablePrompt(eventData))
+export function initTableData(eventData, writeOnly = false) {
+    const allPrompt = USER.tableBaseSetting.message_template.replace('{{tableData}}', getTablePrompt(eventData, false, writeOnly))
     const promptContent = replaceUserTag(allPrompt)  //替换所有的<user>标签
-    return promptContent
+    return writeOnly ? promptContent + '\n当前已关闭 AI 读表，只提供表头和填写规则，不提供已有数据行。不要猜测已有行或行号；无法确定操作时输出空的 tableEdit 标签。' : promptContent;
 }
 
 /**
  * 获取表格相关提示词
  * @returns {string} 表格相关提示词
  */
-export function getTablePrompt(eventData, isPureData = false) {
+export function getTablePrompt(eventData, isPureData = false, writeOnly = false) {
     const lastSheetsPiece = BASE.getReferencePiece()
     if(!lastSheetsPiece) return ''
-    return getTablePromptByPiece(lastSheetsPiece, isPureData)
+    return getTablePromptByPiece(lastSheetsPiece, isPureData, writeOnly)
 }
 
 /**
@@ -196,13 +196,14 @@ export function getTablePrompt(eventData, isPureData = false) {
  * @param {Object} piece 聊天片段
  * @returns {string} 表格相关提示词
  */
-export function getTablePromptByPiece(piece, isPureData = false) {
+export function getTablePromptByPiece(piece, isPureData = false, writeOnly = false) {
     const {hash_sheets} = piece
     const sheets = BASE.hashSheetsToSheets(hash_sheets)
         .filter(sheet => sheet.enable)
         .map((sheet, index) => ({ sheet, index }))
         .filter(({ sheet }) => sheet.sendToContext !== false);
-    const customParts = isPureData ? ['title', 'headers', 'rows'] : ['title', 'node', 'headers', 'rows', 'editRules'];
+    const customParts = writeOnly ? ['title', 'node', 'headers', 'editRules'] :
+        isPureData ? ['title', 'headers', 'rows'] : ['title', 'node', 'headers', 'rows', 'editRules'];
     const sheetDataPrompt = sheets.map(({ sheet, index }) => sheet.getTableText(index, customParts, piece)).join('\n')
     return sheetDataPrompt
 }
@@ -730,12 +731,16 @@ async function onChatCompletionPromptReady(eventData) {
         // 常规模式的注入逻辑
         if (eventData.dryRun === true ||
             USER.tableBaseSetting.isExtensionAble === false ||
-            USER.tableBaseSetting.isAiReadTable === false ||
             USER.tableBaseSetting.injection_mode === "injection_off") {
             return;
         }
 
-        const promptContent = initTableData(eventData)
+        const readEnabled = USER.tableBaseSetting.isAiReadTable !== false;
+        const writeEnabled = USER.tableBaseSetting.isAiWriteTable !== false;
+        if (!readEnabled && !writeEnabled) return;
+        const promptContent = !writeEnabled
+            ? `以下是表格记录，请作为剧情参考：\n${replaceUserTag(getTablePrompt(eventData, true))}`
+            : initTableData(eventData, !readEnabled);
         if (USER.tableBaseSetting.deep === 0)
             eventData.chat.push({ role: getMesRole(), content: promptContent })
         else
@@ -752,12 +757,17 @@ async function onChatCompletionPromptReady(eventData) {
   */
 function getMacroPrompt() {
     try {
-        if (USER.tableBaseSetting.isExtensionAble === false || USER.tableBaseSetting.isAiReadTable === false) return ""
+        if (USER.tableBaseSetting.isExtensionAble === false) return ""
         if (USER.tableBaseSetting.step_by_step === true) {
+            if (USER.tableBaseSetting.isAiReadTable === false) return "";
             const promptContent = replaceUserTag(getTablePrompt(undefined, true))
             return `以下是通过表格记录的当前场景信息以及历史记录信息，你需要以此为参考进行思考：\n${promptContent}`
         }
-        const promptContent = initTableData()
+        const readEnabled = USER.tableBaseSetting.isAiReadTable !== false;
+        const writeEnabled = USER.tableBaseSetting.isAiWriteTable !== false;
+        if (!readEnabled && !writeEnabled) return "";
+        if (!writeEnabled) return `以下是表格记录，请作为剧情参考：\n${replaceUserTag(getTablePrompt(undefined, true))}`;
+        const promptContent = initTableData(undefined, !readEnabled)
         return promptContent
     }catch (error) {
         EDITOR.error(`记忆插件：宏提示词注入失败\n原因：`, error.message, error);
