@@ -137,7 +137,7 @@ export async function handleMainAPIRequest(systemPrompt, userPrompt, isSilent = 
 
         // Loading toast logic
         createLoadingToast(true, isSilent).then((r) => {
-            if (loadingToast) loadingToast.close();
+            if (!isSilent) loadingToast?.close();
             suspended = r; // Assign to the outer suspended variable
         });
 
@@ -152,15 +152,14 @@ export async function handleMainAPIRequest(systemPrompt, userPrompt, isSilent = 
             });
         }
 
-        console.log('主API请求的多消息数组:', messages); // Log the actual array
         // 优先使用「酒馆助手 TavernHelper」插件(支持流式，体验最佳)；
         // 未安装时回退到酒馆自带 generateRaw(非流式，不依赖任何插件，不会 ReferenceError)。
-        if (typeof TavernHelper?.generateRaw === 'function') {
-            const response = await TavernHelper.generateRaw({
+        if (typeof globalThis.TavernHelper?.generateRaw === 'function') {
+            const response = await globalThis.TavernHelper.generateRaw({
                 ordered_prompts: messages, // Pass the array directly
                 should_stream: true,      // Re-enable streaming
             });
-            loadingToast.close();
+            if (!isSilent) loadingToast?.close();
             return suspended ? 'suspended' : response;
         }
 
@@ -170,7 +169,7 @@ export async function handleMainAPIRequest(systemPrompt, userPrompt, isSilent = 
                 systemPrompt: '',
                 trimNames: false, // 不要修剪命名，避免误删表格操作指令
             });
-            loadingToast.close();
+            if (!isSilent) loadingToast?.close();
             return suspended ? 'suspended' : response;
         }
 
@@ -183,7 +182,7 @@ export async function handleMainAPIRequest(systemPrompt, userPrompt, isSilent = 
         finalUserPrompt = userPrompt;
 
         createLoadingToast(true, isSilent).then((r) => {
-            if (loadingToast) loadingToast.close();
+            if (!isSilent) loadingToast?.close();
             suspended = r; // Assign to the outer suspended variable
         });
 
@@ -203,7 +202,7 @@ export async function handleMainAPIRequest(systemPrompt, userPrompt, isSilent = 
             systemPrompt: finalSystemPrompt,
             trimNames: false,
         });
-        loadingToast.close();
+        if (!isSilent) loadingToast?.close();
         return suspended ? 'suspended' : response;
         // --- End: Original logic ---
     }
@@ -369,7 +368,7 @@ export async function handleCustomAPIRequest(systemPrompt, userPrompt, isStepByS
 
     let suspended = false;
     createLoadingToast(false, isSilent).then((r) => {
-        if (loadingToast) loadingToast.close();
+        if (!isSilent) loadingToast?.close();
         suspended = r;
     })
 
@@ -406,6 +405,7 @@ export async function handleCustomAPIRequest(systemPrompt, userPrompt, isStepByS
                 // Pass empty system_prompt if promptData is array, otherwise pass the original systemPrompt string
                 system_prompt: Array.isArray(promptData) ? "" : systemPrompt,
                 temperature: USER.tableBaseSetting.custom_temperature,
+                top_p: USER.tableBaseSetting.custom_top_p,
                 // 修复 #162/#193：将用户配置的输出上限接入 max_tokens。
                 // 旧代码未传 max_tokens，导致 LLMApiService 永远使用默认 63000，
                 // 在输出窗口较小的模型上（如 GPT-4.1-nano、部分 DeepSeek）会直接报 API 错误。
@@ -424,8 +424,7 @@ export async function handleCustomAPIRequest(systemPrompt, userPrompt, isStepByS
             try {
                 // Pass promptData (which could be string or array) to callLLM
                 response = await llmService.callLLM(promptData, streamCallback);
-                console.log(`请求成功 (llmService, 密钥索引: ${keyIndexToTry}):`, response);
-                loadingToast?.close();
+                if (!isSilent) loadingToast?.close();
                 return suspended ? 'suspended' : response; // Success, return immediately
             } catch (llmServiceError) {
                 // llmService failed, log error and continue loop

@@ -387,7 +387,6 @@ export function parseManualJson(jsonStr) {
             throw new Error(`解析完成后还有多余字符在位置 ${index}`);
         }
 
-        console.log('手动解析 JSON 成功:', result);
         return result;
     } catch (error) {
         console.error('JSON 解析错误:', error.message);
@@ -418,7 +417,7 @@ export function safeParse(jsonStr) {
         // 找到对应的 ]
         let bracketEnd = -1;
         let bracketCount = 0;
-        let inString = false;
+        let quote = null;
         let escapeNext = false;
 
         for (let i = bracketStart; i < jsonStr.length; i++) {
@@ -429,17 +428,21 @@ export function safeParse(jsonStr) {
                 continue;
             }
 
-            if (char === '\\') {
+            if (quote && char === '\\') {
                 escapeNext = true;
                 continue;
             }
 
-            if (char === '"' || char === "'") {
-                inString = !inString;
+            if (quote && char === quote) {
+                quote = null;
+                continue;
+            }
+            if (!quote && (char === '"' || char === "'")) {
+                quote = char;
                 continue;
             }
 
-            if (!inString) {
+            if (!quote) {
                 if (char === '[') {
                     bracketCount++;
                 } else if (char === ']') {
@@ -455,19 +458,16 @@ export function safeParse(jsonStr) {
         if (bracketEnd !== -1) {
             // 提取JSON数组字符串
             const jsonArrayStr = jsonStr.substring(bracketStart, bracketEnd + 1);
-            console.log('发现JSON数组:', jsonArrayStr);
 
             try {
                 // 优先使用原生 JSON.parse
                 const parsed = JSON.parse(jsonArrayStr);
                 results.push(parsed);
-                console.log('成功解析JSON数组:', parsed);
             } catch (error) {
                 console.warn('原生 JSON.parse 失败，尝试手动解析:', error.message);
                 try {
                     const parsed = parseManualJson(jsonArrayStr);
                     results.push(parsed);
-                    console.log('手动解析成功:', parsed);
                 } catch (manualError) {
                     console.error('手动解析也失败:', manualError.message);
                     // 继续查找下一个数组，不抛出错误
@@ -486,6 +486,5 @@ export function safeParse(jsonStr) {
         return [];
     }
 
-    console.log(`总共解析出 ${results.length} 个JSON数组:`, results);
     return results;
 }

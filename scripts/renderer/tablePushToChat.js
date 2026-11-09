@@ -1,7 +1,11 @@
 // tablePushToChat.js
 import { BASE, DERIVED, EDITOR, SYSTEM, USER } from '../../core/manager.js';
 import { parseSheetRender, loadValueSheetBySheetHashSheet } from "./sheetCustomRenderer.js";
-import { replaceUserTag } from "../../utils/stringUtil.js";
+import { escapeHtml } from '../../utils/escapeHtml.js';
+
+function replaceUserTagInHtml(html) {
+    return String(html).replace(/<user>/g, escapeHtml(USER.getContext().name1));
+}
 
 
 /**
@@ -67,7 +71,7 @@ function insertCustomRender(tableRole, insertMark, cycleMark, indexForTableRole,
     }
     // console.log("穿插及嵌入最终返回文本customStyle：" + customStyle);
     const sheetContainer = document.createElement('div')    //DOM元素，作为工作表的容器
-    sheetContainer.innerHTML = replaceUserTag(customStyle) //替换掉自定义样式中的<user>标签
+    sheetContainer.innerHTML = replaceUserTagInHtml(customStyle)
     $(_viewSheetsContainer).append(sheetContainer)
 }
 
@@ -81,7 +85,7 @@ function ordinarycustomStyleRender(sheet, _viewSheetsContainer) {
     // console.log('普通表格数据:', sheet.tableSheet);
     const customStyle = parseSheetRender(sheet)             //使用 parseSheetRender 解析工作表
     const sheetContainer = document.createElement('div')    //DOM元素，作为工作表的容器
-    sheetContainer.innerHTML = replaceUserTag(customStyle) //替换掉自定义样式中的<user>标签
+    sheetContainer.innerHTML = replaceUserTagInHtml(customStyle)
     $(_viewSheetsContainer).append(sheetContainer)
 }
 

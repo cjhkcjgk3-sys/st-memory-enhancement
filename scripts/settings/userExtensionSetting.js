@@ -2,6 +2,7 @@ import {BASE, DERIVED, EDITOR, SYSTEM, USER} from '../../core/manager.js';
 import {updateSystemMessageTableStatus, updateAlternateTable} from "../renderer/tablePushToChat.js";
 import {rebuildSheets , modifyRebuildTemplate, newRebuildTemplate, deleteRebuildTemplate, exportRebuildTemplate, importRebuildTemplate, triggerStepByStepNow} from "../runtime/absoluteRefresh.js";
 import {generateDeviceId} from "../../utils/utility.js";
+import { escapeHtml } from '../../utils/escapeHtml.js';
 import {updateModelList, handleApiTestRequest ,processApiKey} from "./standaloneAPI.js";
 import {filterTableDataPopup} from "../../data/pluginSetting.js";
 import {initRefreshTypeSelector} from "../runtime/absoluteRefresh.js";
@@ -145,6 +146,12 @@ async function importTableSet() {
         reader.onload = async (e) => {
             try {
                 const importedData = JSON.parse(e.target.result); // 解析 JSON 文件内容
+                if (!importedData || typeof importedData !== 'object' || Array.isArray(importedData))
+                    throw new Error('配置文件必须是 JSON 对象');
+                if (Object.prototype.hasOwnProperty.call(importedData, 'tableStructure') &&
+                    (!Array.isArray(importedData.tableStructure) || importedData.tableStructure.some(table =>
+                        !table || typeof table.tableName !== 'string' || !Array.isArray(table.columns))))
+                    throw new Error('表格结构格式无效，未导入设置');
 
                 // 获取导入 JSON 的第一级 key
                 const firstLevelKeys = Object.keys(importedData);
@@ -152,7 +159,7 @@ async function importTableSet() {
                 // 构建展示第一级 key 的 HTML 结构
                 let keyListHTML = '<ul>';
                 firstLevelKeys.forEach(key => {
-                    keyListHTML += `<li>${key}</li>`;
+                    keyListHTML += `<li>${escapeHtml(key)}</li>`;
                 });
                 keyListHTML += '</ul>';
 
@@ -174,8 +181,10 @@ async function importTableSet() {
 
                 renderSetting(); // 重新渲染设置界面，应用新的设置
                 // 重新转换模板
-                initTableStructureToTemplate()
-                BASE.refreshTempView(true) // 刷新模板视图
+                if (Object.prototype.hasOwnProperty.call(importedData, 'tableStructure')) {
+                    initTableStructureToTemplate()
+                    BASE.refreshTempView(true) // 刷新模板视图
+                }
                 EDITOR.success('导入成功并已重置所选设置'); // 提示用户导入成功
 
                 // 导入预设时可选清空 chat 域并用全局模板覆盖到 chat 域
@@ -506,6 +515,11 @@ function InitBinging() {
         $('#custom_temperature_value').text(value);
         USER.tableBaseSetting.custom_temperature = Number(value);
     });
+    $('#custom_top_p').on('input', function() {
+        const value = Number($(this).val());
+        $('#custom_top_p_value').text(value);
+        USER.tableBaseSetting.custom_top_p = value;
+    });
     // 修复 #162/#193：自定义 API 输出上限（max_tokens）
     $('#custom_max_tokens').on('input', function() {
         const value = $(this).val();
@@ -582,6 +596,8 @@ export function renderSetting() {
     $('#rebuild_token_limit_value').text(USER.tableBaseSetting.rebuild_token_limit_value);
     $('#custom_temperature').val(USER.tableBaseSetting.custom_temperature);
     $('#custom_temperature_value').text(USER.tableBaseSetting.custom_temperature);
+    $('#custom_top_p').val(USER.tableBaseSetting.custom_top_p);
+    $('#custom_top_p_value').text(USER.tableBaseSetting.custom_top_p);
     // 修复 #162/#193：回填自定义 API 输出上限
     const maxTokens = USER.tableBaseSetting.custom_max_tokens;
     $('#custom_max_tokens').val(maxTokens && maxTokens > 0 ? maxTokens : '');
@@ -614,7 +630,9 @@ export function renderSetting() {
     updateSwitch('#ignore_del', USER.tableBaseSetting.bool_ignore_del);
     // updateSwitch('#bool_force_refresh', USER.tableBaseSetting.bool_force_refresh);
     updateSwitch('#bool_silent_refresh', USER.tableBaseSetting.bool_silent_refresh);
-    // updateSwitch('#use_token_limit', USER.tableBaseSetting.use_token_limit);
+    updateSwitch('#use_token_limit', USER.tableBaseSetting.use_token_limit);
+    $('#token_limit_container').toggle(USER.tableBaseSetting.use_token_limit !== false);
+    $('#clear_up_stairs_container').toggle(USER.tableBaseSetting.use_token_limit === false);
     updateSwitch('#ignore_user_sent', USER.tableBaseSetting.ignore_user_sent);
     updateSwitch('#show_settings_in_extension_menu', USER.tableBaseSetting.show_settings_in_extension_menu);
     updateSwitch('#alternate_switch', USER.tableBaseSetting.alternate_switch);
@@ -633,8 +651,27 @@ export function renderSetting() {
 /**
  * 加载设置
  */
-export function loadSettings() {
+// Upgrade only byte-for-byte known upstream defaults; leave user-edited prompts intact.
+async function migrateUnchangedDefaultPrompts() {
+    if (!globalThis.crypto?.subtle) return;
+    const legacyHashes = {
+        message_template: ['e62907441554b68fdbc3985a81b961b7f41fe680934dc80fd2b6fa8d0a2e9e37', '40dfd82d1c5a40b19ced52d1fa0a4a7d65c6c5b50aeeb7bedd9c710cef6c0bb4'],
+        rebuild_default_system_message_template: ['7c90b8b001cc1976a706170a9843ceb74d8625388ed0efdcbe7e4e1ea4d63463'],
+        step_by_step_user_prompt: ['12c092e37406cfc807f0b8784be878fc33d17e40d2570c09475489d900db0389'],
+    };
+    for (const [key, hashes] of Object.entries(legacyHashes)) {
+        const value = USER.tableBaseSetting[key];
+        if (typeof value !== 'string') continue;
+        const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+        const hash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+        if (hashes.includes(hash)) USER.tableBaseSetting[key] = USER.tableBaseDefaultSettings[key];
+    }
+}
+
+export async function loadSettings() {
     USER.IMPORTANT_USER_PRIVACY_DATA = USER.IMPORTANT_USER_PRIVACY_DATA || {};
+    try { await migrateUnchangedDefaultPrompts(); }
+    catch (error) { console.warn('默认提示词迁移未完成，保留现有设置。', error); }
 
     // 旧版本提示词变更兼容
     if (USER.tableBaseSetting.updateIndex < 3) {

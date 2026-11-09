@@ -31,7 +31,7 @@
 </p>
 
 <p>
-    <b>🚀 最新版本: v2.2.19 🚀</b>
+    <b>🚀 当前版本: v2.2.20 🚀</b>
 </p>
 </div>
 
@@ -65,13 +65,19 @@
 > \[!WARNING]
 > **重要提示：** 本插件仅在 SillyTavern 的 **聊天补全模式** 下工作。
 
+此仓库为原作者插件的个人副本。更新前建议先导出当前插件设置和聊天记录。如果之前安装的是原作者仓库，请确认酒馆中安装和更新的是本仓库；单纯更新原作者版本不会取得此处修改。
+
+未改动过的旧版默认提示词会在支持 Web Crypto 的环境中自动更新，自定义提示词会保留。如果自定义提示词还包含旧表号或旧列示例，可先备份，再在插件重置设置中只选择「注入设置」以使用新的默认消息模板。已有表格模板和聊天数据不会因为更新自动替换；需要使用新表结构时，请备份后在设置中重置「表格结构」。新默认模板沿用原配置：重要事件历史表格默认关闭，可在模板中手动启用。
+
+本仓库可通过 `node --test tests/regression.cjs` 运行离线回归检查；实际界面与模型行为仍需在所用的 SillyTavern 环境中验证。
+
 1. **安装插件：** 在 SillyTavern 页面，点击 `扩展` > `安装拓展`。
 
    <p align="center">
        <img src="https://github.com/user-attachments/assets/67904e14-dc8d-4d7c-a1a8-d24253b72621" alt="安装插件步骤 1" style="max-width:70%; border-radius: 5px;">
    </p>
 
-2. **输入插件地址：** 在弹出的窗口中，输入插件的 GitHub 地址 `https://github.com/muyoou/st-memory-enhancement` ，然后选择 `Install for all users`
+2. **输入插件地址：** 在弹出的窗口中，输入你的 GitHub 仓库地址 `https://github.com/cjhkcjgk3-sys/st-memory-enhancement` ，然后选择 `Install for all users`
 
    <p align="center">
        <img src="https://github.com/user-attachments/assets/9f39015f-63bb-4741-bb7f-740c02f1de17" alt="安装插件步骤 2" style="max-width:70%; border-radius: 5px;">

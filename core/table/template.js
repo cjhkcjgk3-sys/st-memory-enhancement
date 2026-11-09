@@ -86,7 +86,6 @@ export class SheetTemplate extends SheetBase {
             } else {
                 templates.push(sheetDataToSave);
             }
-            console.log("保存模板数据", templates)
             USER.getSettings().table_database_templates = templates;
             if(!manualSave) USER.saveSettings();
             return this;

@@ -209,7 +209,6 @@ export class Sheet extends SheetBase {
             }
             if (!targetPiece.hash_sheets) targetPiece.hash_sheets = {};
             targetPiece.hash_sheets[this.uid] = this.hashSheet?.map(row => row.map(hash => hash));
-            console.log('保存表格数据', targetPiece, this.hashSheet);
             if (!manualSave) USER.saveChat();
 
             return this;
@@ -236,7 +235,6 @@ export class Sheet extends SheetBase {
      * @returns 表格内容提示词
      */
     getTableText(index, customParts = ['title', 'node', 'headers', 'rows', 'editRules']) {
-        console.log('获取表格内容提示词', this)
         if (this.triggerSend && this.triggerSendDeep < 1) return ''; // 如果触发深度=0，则不发送，可以用作信息一览表
         // 修复：损坏/空结构（hashSheet 为空、无首行、origin 单元格缺失）时提前返回，避免后续取 .data 抛错
         if (!this.hashSheet || !Array.isArray(this.hashSheet) || this.hashSheet.length === 0 ||
@@ -256,22 +254,14 @@ export class Sheet extends SheetBase {
 
         if (rows && this.triggerSend) {
             const chats = USER.getContext().chat;
-            console.log("进入触发发送模式,测试获取chats", chats)
             // 提取所有聊天内容中的 content 值
             const chat_content = getLatestChatHistory(chats, this.triggerSendDeep)
-            console.log('获取聊天内容: ', chat_content)
-            console.log("聊天内容类型:", typeof (chat_content))
-            const rowsArray = rows.split('\n').filter(line => {
-                line = line.trim();
-                if (!line) return false;
-                const parts = line.split(',');
-                const str1 = parts?.[1] ?? ""; // 字符串1对应索引1
-                return chat_content.includes(str1);
+            rows = this.getSheetCSV(true, 'value', row => {
+                const firstValue = this.cells.get(row[1])?.data.value;
+                return firstValue != null && String(firstValue) !== '' && chat_content.includes(String(firstValue));
             });
-            rows = rowsArray.join('\n');
         }
         let result = '';
-        console.log('测试获取表格内容提示词', customParts, result, this);
         if (customParts.includes('title')) {
             result += title;
         }
@@ -344,7 +334,6 @@ export class Sheet extends SheetBase {
         }
         if (typeof target === 'object') {
             if (target.domain === SheetBase.SheetDomain.global) {
-                console.log('从模板转化表格', target, this);
                 this.loadJson(target)
                 this.domain = 'chat'
                 this.uid = `sheet_${SYSTEM.generateRandomString(8)}`;

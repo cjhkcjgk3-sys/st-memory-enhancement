@@ -2,7 +2,7 @@ import {BASE, DERIVED, EDITOR, SYSTEM, USER} from '../../core/manager.js';
 import { executeIncrementalUpdateFromSummary } from "./absoluteRefresh.js";
 import { newPopupConfirm } from '../../components/popupConfirm.js';
 import { reloadCurrentChat } from "/script.js"
-import {getTablePrompt,initTableData, undoSheets} from "../../index.js"
+import {getTablePrompt,initTableData} from "../../index.js"
 
 let toBeExecuted = [];
 // 修复 #210：防止同一个分步填表流程被多次触发（如多条消息渲染/其他插件重复触发事件），
@@ -68,9 +68,6 @@ function handleMessages(string) {
 }
 
 function MarkChatAsWaiting(chat, swipeUid) {
-    console.log(USER.getContext().chat);
-    console.log('chat.two_step_links:',chat.two_step_links);
-    console.log('chat.two_step_waiting:',chat.two_step_waiting);
     chat.two_step_waiting[swipeUid] = true;
 }
 
@@ -100,7 +97,6 @@ export async function TableTwoStepSummary(mode) {
     const swipeUid = getSwipeUid(currentPiece);
     const todoChats = todoPiece.mes;
 
-    console.log('待填表的对话片段:', todoChats);
 
     stepByStepBusy = true;
     try {
@@ -109,7 +105,7 @@ export async function TableTwoStepSummary(mode) {
         // 移除了模板选择相关的HTML和逻辑
 
         const popupId = 'stepwiseSummaryConfirm';
-        const confirmResult = await newPopupConfirm(
+        const confirmResult = USER.tableBaseSetting.confirm_before_execution === false ? true : await newPopupConfirm(
             popupContentHtml,
             "取消",
             "执行填表",
@@ -121,7 +117,6 @@ export async function TableTwoStepSummary(mode) {
         console.log('newPopupConfirm result for stepwise summary:', confirmResult);
 
         if (confirmResult === false) {
-            console.log('用户取消执行独立填表: ', `(${todoChats.length}) `, toBeExecuted);
             MarkChatAsWaiting(currentPiece, swipeUid);
         } else {
             // This block executes if confirmResult is true OR 'dont_remind_active'
@@ -157,21 +152,7 @@ export async function manualSummaryChat(todoChats, confirmResult, swipeUid = '')
         return;
     }
 
-    // 只有当表格中已经有内容时，才执行“撤销并重做”
-    if (initialPiece.hash_sheets && Object.keys(initialPiece.hash_sheets).length > 0) {
-        console.log('[Memory Enhancement] 立即填表：检测到表格中有数据，执行恢复操作...');
-        try {
-            await undoSheets(0);
-            EDITOR.success('表格已恢复到上一版本。');
-            console.log('[Memory Enhancement] 表格恢复成功，准备执行填表。');
-        } catch (e) {
-            EDITOR.error('恢复表格失败，操作中止。', e.message, e);
-            console.error('[Memory Enhancement] 调用 undoSheets 失败:', e);
-            return;
-        }
-    } else {
-        console.log('[Memory Enhancement] 立即填表：检测到为空表，跳过恢复步骤，直接执行填表。');
-    }
+    // Keep the current table intact until the request and its edits succeed.
 
     // 步骤二：以当前状态（可能已恢复）为基础，继续执行填表
     // 重新获取 piece，确保我们使用的是最新状态（无论是原始状态还是恢复后的状态）
@@ -216,7 +197,6 @@ export async function manualSummaryChat(todoChats, confirmResult, swipeUid = '')
         reloadCurrentChat();
         return true;
     } else if (r === 'suspended' || r === 'error' || !r) {
-        console.log('执行增量独立填表失败或取消: ', `(${todoChats.length}) `, toBeExecuted);
         return false;
     }
     

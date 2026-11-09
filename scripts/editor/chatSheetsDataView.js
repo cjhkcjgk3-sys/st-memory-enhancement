@@ -104,7 +104,6 @@ async function importTable(mesId, viewSheetsContainer) {
                 const result = await popup.show()
                 if (result) {
                     const tables = JSON.parse(loadEvent.target.result)
-                    console.log("导入内容", tables, tables.mate, !(tables.mate === 'chatSheets'))
                     if (!(tables.mate?.type === 'chatSheets')) return EDITOR.error("导入失败：文件格式不正确", "请检查你导入的是否是表格数据")
                     if (result === 3)
                         BASE.applyJsonToChatSheets(tables, "data")
@@ -479,7 +478,6 @@ function cellClickEvent(cell) {
         })
     })
     cell.on('', () => {
-        console.log('cell发生了改变:', cell)
     })
 }
 
@@ -493,7 +491,6 @@ export async function renderEditableSheetsDOM(_sheets, _viewSheetsContainer, _ce
     for (let [index, sheet] of _sheets.entries()) {
         if (!sheet.enable) continue
         const instance = sheet
-        console.log("渲染：", instance)
         const sheetContainer = document.createElement('div')
         const sheetTitleText = document.createElement('h3')
         sheetContainer.classList.add('table-directory-sheet-container')
@@ -521,7 +518,6 @@ export async function renderEditableSheetsDOM(_sheets, _viewSheetsContainer, _ce
             sheetElement = await instance.renderSheet(_cellClickEvent)
         }
         // 已集成到 Sheet.renderSheet 内部，这里无需再次调用
-        console.log("渲染表格：", sheetElement)
         $(sheetContainer).append(sheetElement)
 
         $(_viewSheetsContainer).append(sheetTitleText)
@@ -569,7 +565,6 @@ async function renderSheetsDOM(mesId = -1) {
             cell.isDeleted = false;
         })
     })
-    console.log('renderSheetsDOM:', piece, sheets)
     DERIVED.any.renderingSheets = sheets
 
     task.log()

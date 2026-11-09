@@ -16,6 +16,7 @@ export class LLMApiService {
             model_name: config.model_name || "gpt-3.5-turbo",
             system_prompt: config.system_prompt || "You are a helpful assistant.",
             temperature: config.temperature || 1.0,
+            top_p: Number(config.top_p),
             max_tokens: config.max_tokens || 63000, // 将默认值从 20000 修改为 63000
             stream: config.stream || false
         };
@@ -67,6 +68,7 @@ export class LLMApiService {
                     reverse_proxy: USER.IMPORTANT_USER_PRIVACY_DATA.table_proxy_address,
                     proxy_password: USER.IMPORTANT_USER_PRIVACY_DATA.table_proxy_key || null,
                 };
+                if (this.config.top_p > 0 && this.config.top_p < 1) requestData.top_p = this.config.top_p;
 
                 if (this.config.stream) {
                     if (!streamCallback || typeof streamCallback !== 'function') {
@@ -112,6 +114,7 @@ export class LLMApiService {
                 max_tokens: this.config.max_tokens,
                 stream: this.config.stream
             };
+            if (this.config.top_p > 0 && this.config.top_p < 1) data.top_p = this.config.top_p;
 
             try {
                 if (this.config.stream) {
@@ -194,7 +197,6 @@ export class LLMApiService {
                 for (const line of lines) {
                     const trimmedLine = line.trim();
                     if (trimmedLine === '') continue;
-                    console.log(`[Stream] Custom API processing line: "${trimmedLine}"`); // Log processed line
 
                     try {
                         if (trimmedLine.startsWith('data: ')) {
@@ -230,7 +232,6 @@ export class LLMApiService {
             // Process any remaining data in the buffer after the loop finishes
             const finalBufferTrimmed = buffer.trim();
             if (finalBufferTrimmed) {
-                console.log(`[Stream] Custom API processing final buffer content: "${finalBufferTrimmed}"`); // Log final buffer processing
                 try {
                     // Attempt to handle potential JSON object directly in buffer (less common for SSE)
                     if (finalBufferTrimmed.startsWith('data: ')) {

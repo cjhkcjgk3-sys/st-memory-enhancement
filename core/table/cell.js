@@ -275,7 +275,6 @@ export class Cell {
         cell.data = { ...this.data, ...props };
         const [rowIndex, colIndex] = this.#positionInParentCellSheet()
         this.parent.cells.set(cell.uid, cell);
-        console.log("保存前的 cell", this.parent.cellHistory);
         this.parent.cellHistory.push(cell);
         this.parent.hashSheet[rowIndex][colIndex] = cell.uid;
         this.parent.markPositionCacheDirty();

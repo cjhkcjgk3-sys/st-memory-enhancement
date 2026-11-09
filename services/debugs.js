@@ -32,7 +32,7 @@ export async function rollbackVersion() {
 
         USER.saveSettings()
         USER.saveChat();
-        console.log("已清除表格数据: ", USER.getSettings(), USER.getContext().chatMetadata, USER.getChatPiece())
+        console.log("已清除表格数据")
         return true
     } else {
         console.log("用户取消了清除操作")

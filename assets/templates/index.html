@@ -197,6 +197,11 @@
                                                 <input type="range" id="custom_temperature" min="0.1" max="2.0"
                                                     step="0.1" value="1.0" style="flex-grow: 1;">
                                             </div>
+                                            <div class="flex-container slider-container" style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+                                                <label for="custom_top_p">自定义 API top_p：<span id="custom_top_p_value">1</span></label>
+                                                <input type="range" id="custom_top_p" min="0.01" max="1" step="0.01" value="1" style="flex-grow: 1;">
+                                            </div>
+                                            <small>部分模型不接受同时调整 temperature 和 top_p，请按所用接口要求设置。</small>
                                             <!-- 修复 #162/#193：自定义 API 输出 token 上限（max_tokens） -->
                                             <div class="flex-container"
                                                 style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
@@ -246,10 +251,10 @@
                                     </div>
 
                                     <!-- 高级设置选项 -->
-                                    <!-- <div class="flex-container slider-container" style="margin: 5px; padding-bottom: 10px;" id="clear_up_stairs_container">
+                                    <div class="flex-container slider-container" style="margin: 5px; padding-bottom: 10px;" id="clear_up_stairs_container">
                                         <label><span data-i18n="Reference recent chat history">参考最近聊天记录：</span><code id="clear_up_stairs_value">9条</code></label>
                                         <input type="range" id="clear_up_stairs" min="1" max="99" step="1" value="9" style="width: calc(100% - 20px);">
-                                    </div> -->
+                                    </div>
                                     <div class="flex-container slider-container"
                                         style="margin: 5px; padding-bottom: 10px" id="token_limit_container">
                                         <label><span data-i18n="Token limit">Token限制：</span><code
@@ -257,10 +262,9 @@
                                         <input type="range" id="rebuild_token_limit" min="1000" max="100000" step="1000"
                                             value="10000" style="width: calc(100% - 20px);">
                                     </div>
-                                    <!-- 屏蔽选项，改为默认token限制 -->
-                                    <!-- <div class="checkbox_label">
+                                    <div class="checkbox_label">
                                         <input type="checkbox" id="use_token_limit"><span data-i18n="Use token limit instead of chat history limit">用token代替聊天记录限制</span>
-                                    </div> -->
+                                    </div>
                                     <div class="checkbox_label range-block justifyLeft">
                                         <input type="checkbox" id="ignore_user_sent" checked><span
                                             data-i18n="Only reference AI replies">只参考AI回复的消息</span>

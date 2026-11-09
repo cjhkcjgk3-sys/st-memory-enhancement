@@ -9,6 +9,8 @@ import { profile_prompts } from "../../data/profile_prompts.js";
 import { Form } from '../../components/formManager.js';
 import { refreshRebuildTemplate } from "../settings/userExtensionSetting.js"
 import { safeParse } from '../../utils/stringUtil.js';
+import { escapeHtml } from '../../utils/escapeHtml.js';
+import { captureTableContext, sameTableContext, validateRebuiltTables } from '../../utils/tableSafety.js';
 
 // 在解析响应后添加验证
 function validateActions(actions) {
@@ -43,7 +45,6 @@ function validateActions(actions) {
 }
 
 function confirmTheOperationPerformed(content) {
-    console.log('content:', content);
     // 修复 #203/#168：AI 返回的整理结果可能缺 columns / content 或行不是数组，
     // 直接 .map 会报 “Cannot read properties of undefined (reading 'map')”。
     const safeContent = (Array.isArray(content) ? content : []).map(t => ({
@@ -65,18 +66,18 @@ function confirmTheOperationPerformed(content) {
         <div>
             <div class="operation-list-container"> ${safeContent.map(table => {
         return `
-<h3 class="operation-list-title">${table.tableName}</h3>
+<h3 class="operation-list-title">${escapeHtml(table.tableName)}</h3>
 <div class="operation-list">
     <table class="tableDom sheet-table">
         <thead>
             <tr>
-                ${table.columns.map(column => `<th>${column}</th>`).join('')}
+                ${table.columns.map(column => `<th>${escapeHtml(column)}</th>`).join('')}
             </tr>
         </thead>
         <tbody>
             ${table.content.map(row => `
             <tr>
-                ${row.map(cell => `<td>${cell}</td>`).join('')}
+                ${row.map(cell => `<td>${escapeHtml(cell)}</td>`).join('')}
             </tr>
             `).join('')}
         </tbody>
@@ -230,6 +231,8 @@ export async function rebuildTableActions(force = false, silentUpdate = USER.tab
             throw new Error('findLastestTableData 未返回有效的表格数据');
         }
         const latestTables = BASE.hashSheetsToSheets(piece.hash_sheets).filter(sheet => sheet.enable);
+        const requestContext = captureTableContext(USER.getContext().chat, USER.getChatPiece()?.piece);
+        if (!requestContext) throw new Error('当前聊天没有可保存表格的消息');
         DERIVED.any.waitingTable = latestTables;
         DERIVED.any.waitingTableIdMap = latestTables.map(table => table.uid);
 
@@ -245,15 +248,13 @@ export async function rebuildTableActions(force = false, silentUpdate = USER.tab
         });
         const tableHeadersText = JSON.stringify(tableHeaders);
 
-        console.log('表头数据 (JSON):', tableHeadersText);
-        console.log('重整理 - 最新的表格数据:', tableJsonText);
 
         // 获取最近clear_up_stairs条聊天记录
         const chat = USER.getContext().chat;
         const lastChats = chatToBeUsed === '' ? await getRecentChatHistory(chat,
             USER.tableBaseSetting.clear_up_stairs,
             USER.tableBaseSetting.ignore_user_sent,
-            USER.tableBaseSetting.rebuild_token_limit_value
+            USER.tableBaseSetting.use_token_limit === false ? 0 : USER.tableBaseSetting.rebuild_token_limit_value
         ) : chatToBeUsed;
 
         // 构建AI提示
@@ -275,19 +276,14 @@ export async function rebuildTableActions(force = false, silentUpdate = USER.tab
 
         try {
             parsedSystemPrompt = JSON5.parse(systemPrompt)
-            console.log('解析后的 systemPrompt:', parsedSystemPrompt);
         } catch (error) {
             console.log("未解析成功", error)
             parsedSystemPrompt = systemPrompt
         }
 
         const replacePrompt = (input) => {
-            let output = input
-            output = output.replace(/\$0/g, tableJsonText);
-            output = output.replace(/\$1/g, lastChats);
-            output = output.replace(/\$2/g, tableHeadersText);
-            output = output.replace(/\$3/g, DERIVED.any.additionalPrompt ?? '');
-            return output
+            const values = { '$0': tableJsonText, '$1': lastChats, '$2': tableHeadersText, '$3': DERIVED.any.additionalPrompt ?? '' };
+            return input.replace(/\$[0-3]/g, token => values[token]);
         }
 
         if (typeof parsedSystemPrompt === 'string') {
@@ -299,12 +295,8 @@ export async function rebuildTableActions(force = false, silentUpdate = USER.tab
 
 
         // 搜索userPrompt中的$0和$1字段，将$0替换成originText，将$1替换成lastChats，将$2替换成空表头
-        userPrompt = userPrompt.replace(/\$0/g, tableJsonText);
-        userPrompt = userPrompt.replace(/\$1/g, lastChats);
-        userPrompt = userPrompt.replace(/\$2/g, tableHeadersText);
-        userPrompt = userPrompt.replace(/\$3/g, DERIVED.any.additionalPrompt ?? '');
+        userPrompt = replacePrompt(userPrompt);
 
-        console.log('systemPrompt:', parsedSystemPrompt);
         // console.log('userPrompt:', userPrompt);
 
         // 生成响应内容
@@ -335,20 +327,17 @@ export async function rebuildTableActions(force = false, silentUpdate = USER.tab
                 EDITOR.error('自定义API请求错误: ' , error.message, error);
             }
         }
-        console.log('rawContent:', rawContent);
 
         // 检查 rawContent 是否有效
         if (typeof rawContent !== 'string') {
             EDITOR.clear();
             EDITOR.error('API响应内容无效，无法继续处理表格。');
-            console.error('API响应内容无效，rawContent:', rawContent);
             return;
         }
 
         if (!rawContent.trim()) {
             EDITOR.clear();
             EDITOR.error('API响应内容为空，空回复一般是破限问题');
-            console.error('API响应内容为空，rawContent:', rawContent);
             return;
         }
 
@@ -357,7 +346,6 @@ export async function rebuildTableActions(force = false, silentUpdate = USER.tab
             showTextPreview(rawContent);
         }
 
-        console.log('响应内容如下：', rawContent);
         let cleanContentTable = null;
         try{
             const parsed = safeParse(rawContent);
@@ -370,15 +358,12 @@ export async function rebuildTableActions(force = false, silentUpdate = USER.tab
             return;
         }
         
-        console.log('cleanContent:', cleanContentTable);
 
         //将表格保存回去
         if (cleanContentTable) {
             try {
-                // 验证数据格式
-                if (!Array.isArray(cleanContentTable)) {
-                    throw new Error("生成的新表格数据不是数组");
-                }
+                // Reject malformed output before touching any existing sheet.
+                const prepared = validateRebuiltTables(cleanContentTable, latestTables);
 
                 // 如果不是静默更新，显示操作确认
                 if (!silentUpdate) {
@@ -396,32 +381,19 @@ export async function rebuildTableActions(force = false, silentUpdate = USER.tab
                 // 更新聊天记录
                 const { piece } = USER.getChatPiece()
                 if (piece) {
-                    for (const index in cleanContentTable) {
-                        let sheet;
-                        const rawTable = cleanContentTable[index];
-                        if (!rawTable || typeof rawTable !== 'object') continue;
-                        // 修复 #203/#168：对缺列/缺行的响应做归一化，避免展开 undefined 崩溃
-                        const columns = Array.isArray(rawTable.columns) ? rawTable.columns.map(c => String(c ?? '')) : [];
-                        const content = Array.isArray(rawTable.content)
-                            ? rawTable.content.map(row => Array.isArray(row) ? row.map(c => String(c ?? '')) : [])
-                            : [];
-                        const table = { ...rawTable, columns, content };
-                        if (table.tableUid){
-                            sheet = BASE.getChatSheet(table.tableUid)
-                        }else if(table.tableIndex !== undefined) {
-                            const uid = DERIVED.any.waitingTableIdMap[table.tableIndex]
-                            sheet = BASE.getChatSheet(uid)
-                        }else{
-                            const uid = DERIVED.any.waitingTableIdMap[index]
-                            sheet = BASE.getChatSheet(uid)
+                    if (!sameTableContext(requestContext, USER.getContext().chat, piece))
+                        throw new Error('聊天或表格已变化，本次整理结果未写入');
+                    const backups = prepared.map(({ sheet }) => ({ sheet, data: sheet.filterSavingData() }));
+                    const oldHashes = JSON.parse(JSON.stringify(piece.hash_sheets ?? {}));
+                    try {
+                        for (const { sheet, columns, content } of prepared) {
+                            sheet.rebuildHashSheetByValueSheet([columns, ...content].map(row => ['', ...row]));
+                            if (sheet.save(piece, true) === false) throw new Error(`表格「${sheet.name}」保存失败`);
                         }
-                        if(!sheet) {
-                            console.error(`无法找到表格 ${table.tableName} 对应的sheet`);
-                            continue;
-                        }
-                        const valueSheet = [table.columns, ...table.content].map(row => ['', ...row])
-                        sheet.rebuildHashSheetByValueSheet(valueSheet);
-                        sheet.save(piece, true)
+                    } catch (error) {
+                        for (const { sheet, data } of backups) { sheet.loadJson(data); sheet.save(piece, true); }
+                        piece.hash_sheets = oldHashes;
+                        throw error;
                     }
                     await USER.getContext().saveChat(); // 等待保存完成
                 } else {
@@ -454,7 +426,7 @@ async function showTextPreview(text) {
         <div>
             <span style="margin-right: 10px;">返回的总结结果，请复制后使用</span>
         </div>
-        <textarea rows="10" style="width: 100%">${text}</textarea>
+        <textarea rows="10" style="width: 100%">${escapeHtml(text)}</textarea>
     `;
 
     const popup = new EDITOR.Popup(previewHtml, EDITOR.POPUP_TYPE.TEXT, '', { wide: true });
@@ -466,7 +438,7 @@ async function showErrorTextPreview(text) {
         <div>
             <span style="margin-right: 10px;">这是AI返回的信息，无法被脚本解析而停止</span>
         </div>
-        <textarea rows="10" style="width: 100%">${text}</textarea>
+        <textarea rows="10" style="width: 100%">${escapeHtml(text)}</textarea>
     `;
 
     const popup = new EDITOR.Popup(previewHtml, EDITOR.POPUP_TYPE.TEXT, '', { wide: true });
@@ -681,7 +653,7 @@ function fixTableFormat(inputText) {
         return safeParse(inputText);
     } catch (error) {
         console.error("修复失败:", error);
-        const popup = new EDITOR.Popup(`脚本无法解析返回的数据，可能是破限力度问题，也可能是输出掉格式。这里是返回的数据：<div>${inputText}</div>`, EDITOR.POPUP_TYPE.CONFIRM, '', { okButton: "确定" });
+        const popup = new EDITOR.Popup(`脚本无法解析返回的数据，可能是破限力度问题，也可能是输出掉格式。这里是返回的数据：<div>${escapeHtml(inputText)}</div>`, EDITOR.POPUP_TYPE.CONFIRM, '', { okButton: "确定" });
         popup.show();
         throw new Error('无法解析表格数据');
     }
@@ -892,6 +864,8 @@ export async function executeIncrementalUpdateFromSummary(
     if (!SYSTEM.lazy('executeIncrementalUpdate', 1000)) return '';
 
     try {
+        const requestContext = captureTableContext(USER.getContext().chat, referencePiece);
+        if (!requestContext) throw new Error('当前聊天没有可保存表格的消息');
         DERIVED.any.waitingPiece = referencePiece;
         const separateReadContextLayers = Number($('#separateReadContextLayers').val());
         const contextChats = await getRecentChatHistory(USER.getContext().chat, separateReadContextLayers, true);
@@ -965,12 +939,9 @@ export async function executeIncrementalUpdateFromSummary(
 
         // 打印将要发送到API的最终数据
         if (Array.isArray(systemPromptForApi)) {
-            console.log('API-bound data (as message array):', systemPromptForApi);
             const totalContent = systemPromptForApi.map(m => m.content).join('');
             console.log('Estimated token count:', estimateTokenCount(totalContent));
         } else {
-            console.log('System Prompt for API:', systemPromptForApi);
-            console.log('User Prompt for API:', userPromptForApi);
             console.log('Estimated token count:', estimateTokenCount(systemPromptForApi + (userPromptForApi || '')));
         }
 
@@ -1016,18 +987,20 @@ export async function executeIncrementalUpdateFromSummary(
         const { matches } = getTableEditTag(rawContent);
 
         if (!matches || matches.length === 0) {
-            EDITOR.info("AI未返回任何有效的<tableEdit>操作指令，表格内容未发生变化。");
-            return 'success';
+            EDITOR.warning("AI未返回完整的<tableEdit>标签，表格未修改。");
+            return 'error';
         }
 
         try {
             // 将提取到的、未经修改的原始指令数组传递给执行器
-            executeTableEditActions(matches, referencePiece)
+            if (!sameTableContext(requestContext, USER.getContext().chat, USER.getChatPiece()?.piece))
+                throw new Error('聊天或表格已变化，本次填表结果未写入');
+            if (!executeTableEditActions(matches, referencePiece)) return 'error';
         } catch (e) {
             EDITOR.error("执行表格操作指令时出错: ", e.message, e);
-            console.error("错误原文: ", matches.join('\n'));
+            return 'error';
         }
-        USER.saveChat()
+        await USER.saveChat()
         BASE.refreshContextView();
         updateSystemMessageTableStatus();
         EDITOR.success('独立填表完成！');

@@ -50,7 +50,6 @@ export const createProxyWithUserSetting = (target, allowEmpty = false) => {
             return undefined;
         },
         set: (_, property, value) => {
-            console.log(`设置变量 ${property} 为 ${value}`)
             if (!USER.getSettings()[target]) {
                 USER.getSettings()[target] = {}; // 初始化，如果不存在
             }

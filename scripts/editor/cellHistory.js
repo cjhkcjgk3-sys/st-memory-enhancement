@@ -1,5 +1,6 @@
 import {BASE, DERIVED, EDITOR, SYSTEM, USER} from '../../core/manager.js';
 import { Cell } from '../../core/table/cell.js';
+import { escapeHtml } from '../../utils/escapeHtml.js';
 
 const histories = `
 <style>
@@ -115,9 +116,9 @@ async function reloadCellHistory(cell, historyCell, container) {
     <div class="cell-history">
         <h3>确认回溯单元格历史记录</h3>
         <div class="cell-history-confirm">
-            <textarea class="cell-history-confirm-last" readonly>${currentValue}</textarea>
+            <textarea class="cell-history-confirm-last" readonly>${escapeHtml(currentValue)}</textarea>
             <span>修改为:</span>
-            <textarea class="cell-history-confirm-value" rows="8">${targetValue}</textarea>
+            <textarea class="cell-history-confirm-value" rows="8">${escapeHtml(targetValue)}</textarea>
         </div>
     </div>
     `, EDITOR.POPUP_TYPE.CONFIRM, '', { wide: true, allowVerticalScrolling: false, okButton: "继续", cancelButton: "取消" });

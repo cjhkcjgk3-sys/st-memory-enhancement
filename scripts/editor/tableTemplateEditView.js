@@ -234,7 +234,6 @@ function bindSheetSetting(sheet, index) {
         await popup.show();
         if (popup.result) {
             const diffData = compareDataDiff(formInstance.result(), initialData)
-            console.log(diffData)
             let needRerender = false
             // 将比较数据差异的结果更新至表格
             Object.keys(diffData).forEach(key => {
@@ -299,7 +298,6 @@ async function templateCellDataEdit(cell) {
     await popup.show();
     if (popup.result) {
         const diffData = compareDataDiff(formInstance.result(), initialData)
-        console.log(diffData)
         Object.keys(diffData).forEach(key => {
             cell.data[key] = diffData[key];
         })

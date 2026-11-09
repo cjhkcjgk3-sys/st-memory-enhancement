@@ -78,7 +78,6 @@ export class SheetBase {
                         });
                     });
                     this._cellPositionCacheDirty = false;   // 更新完成，标记为干净
-                    console.log('重新计算 positionCache: ', map);
                 }
                 return map.get(uid);
             },
@@ -120,31 +119,42 @@ export class SheetBase {
     rebuildHashSheetByValueSheet(valueSheet) {
         const cols = valueSheet[0].length
         const rows = valueSheet.length
-        const usedCellUids = []; // 跟踪已使用的单元格uid
+        const usedCellUids = new Set();
+        // Index history once instead of scanning all past cells for every value.
+        const candidates = new Map();
+        for (const cell of this.cellHistory) {
+            if (!candidates.has(cell.type)) candidates.set(cell.type, new Map());
+            const byValue = candidates.get(cell.type);
+            const value = cell.data.value;
+            if (!byValue.has(value)) byValue.set(value, { cells: [], next: 0 });
+            byValue.get(value).cells.push(cell);
+        }
         const newHashSheet = Array.from({ length: rows }, (_, i) => Array.from({ length: cols }, (_, j) => {
-            const value = valueSheet[i][j] || '';
+            const value = valueSheet[i][j] ?? '';
             const cellType = this.getCellTypeByPosition(i, j);
             // 修复 #211：origin 单元格(0,0) 承载着模板属性（note/initNode/insertNode/updateNode/deleteNode）。
             // 直接按 value 匹配可能因 data.value 为 undefined/空串 而匹配不上，导致新建空 origin 单元格，
             // 使“整理/总结”后聊天域模板属性被清空。这里优先复用已有的 sheet_origin 单元格。
             if (cellType === Cell.CellType.sheet_origin) {
                 const existingOrigin = this.cellHistory.find(c =>
-                    c.type === Cell.CellType.sheet_origin && !usedCellUids.includes(c.uid));
+                    c.type === Cell.CellType.sheet_origin && !usedCellUids.has(c.uid));
                 if (existingOrigin) {
-                    usedCellUids.push(existingOrigin.uid);
+                    usedCellUids.add(existingOrigin.uid);
                     return existingOrigin.uid;
                 }
             }
             // 如果存在相同值的单元格，则复用该单元格，但排除已使用的单元格
-            const oldCell = this.findCellByValue(valueSheet[i][j] || '', cellType, usedCellUids)
+            const bucket = candidates.get(cellType)?.get(value);
+            while (bucket && bucket.next < bucket.cells.length && usedCellUids.has(bucket.cells[bucket.next].uid)) bucket.next++;
+            const oldCell = bucket?.cells[bucket.next++];
             if (oldCell) {
-                usedCellUids.push(oldCell.uid); // 标记为已使用
+                usedCellUids.add(oldCell.uid);
                 return oldCell.uid; // 复用已有单元格
             }
             const cell = new Cell(this);
             this.cells.set(cell.uid, cell);
             this.cellHistory.push(cell);
-            cell.data.value = valueSheet[i][j] || ''; // 设置单元格的值
+            cell.data.value = value;
             if (i === 0 && j === 0) {
                 cell.type = Cell.CellType.sheet_origin;
             } else if (i === 0) {
@@ -152,7 +162,7 @@ export class SheetBase {
             } else if (j === 0) {
                 cell.type = Cell.CellType.row_header;
             }
-            usedCellUids.push(cell.uid); // 标记新创建的单元格为已使用
+            usedCellUids.add(cell.uid);
             return cell.uid;
         }));
         this.hashSheet = newHashSheet
@@ -252,7 +262,6 @@ export class SheetBase {
             this.cells.set(cell.uid, cell);
             return cell;
         }
-        console.log('找到单元格',target);
         return target;
     }
     /**
@@ -271,13 +280,15 @@ export class SheetBase {
      * 获取表格csv格式的内容
      * @returns
      */
-    getSheetCSV( removeHeader = true,key = 'value') {
+    getSheetCSV( removeHeader = true, key = 'value', includeRow = null) {
         if (this.isEmpty()) return '（此表格当前为空）\n'
-        console.log("测试获取map", this.cells)
-        const content = this.hashSheet.slice(removeHeader?1:0).map((row, index) => row.map(cellUid => {
+        const content = this.hashSheet.slice(removeHeader?1:0).map((row, index) => ({ row, index }))
+        .filter(({ row }) => !includeRow || includeRow(row))
+        .map(({ row, index }) => row.map(cellUid => {
             const cell = this.cells.get(cellUid)
             if (!cell) return ""
-            return cell.type === Cell.CellType.row_header ? index : cell.data[key]
+            const value = String((cell.type === Cell.CellType.row_header ? index : cell.data[key]) ?? '');
+            return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
         }).join(',')).join('\n');
         return content + "\n";
     }

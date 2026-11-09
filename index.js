@@ -19,7 +19,7 @@ import { initExternalDataAdapter } from './external-data-adapter.js';
 
 console.log("______________________记忆插件：开始加载______________________")
 
-const VERSION = '2.2.19'
+const VERSION = '2.2.20'
 
 const editErrorInfo = {
     forgotCommentTag: false,
@@ -103,7 +103,6 @@ export function convertOldTablesToNewSheets(oldTableList, targetPiece) {
         if (targetSheetUid) {
             // 如果表格已存在，则更新表格数据
             const targetSheet = BASE.getChatSheet(targetSheetUid)
-            console.log("表格已存在，更新表格数据", targetSheet)
             targetSheet.rebuildHashSheetByValueSheet(valueSheet)
             targetSheet.save(targetPiece)
             addOldTablePrompt(targetSheet)
@@ -135,7 +134,6 @@ export function convertOldTablesToNewSheets(oldTableList, targetPiece) {
         sheets.push(newSheet)
     }
     // USER.saveChat()
-    console.log("转换旧表格数据为新表格数据", sheets)
     return sheets
 }
 
@@ -145,7 +143,6 @@ export function convertOldTablesToNewSheets(oldTableList, targetPiece) {
  */
 function addOldTablePrompt(sheet) {
     const tableStructure = USER.tableBaseSetting.tableStructure.find(table => table.tableName === sheet.name)
-    console.log("添加旧表格提示词", tableStructure, USER.tableBaseSetting.tableStructure, sheet.name)
     if (!tableStructure) return false
     const source = sheet.source
     source.required = tableStructure.Required
@@ -181,7 +178,6 @@ export function findNextChatWhitTableData(startIndex, isIncludeStartIndex = fals
 export function initTableData(eventData) {
     const allPrompt = USER.tableBaseSetting.message_template.replace('{{tableData}}', getTablePrompt(eventData))
     const promptContent = replaceUserTag(allPrompt)  //替换所有的<user>标签
-    console.log("完整提示", promptContent)
     return promptContent
 }
 
@@ -192,7 +188,6 @@ export function initTableData(eventData) {
 export function getTablePrompt(eventData, isPureData = false) {
     const lastSheetsPiece = BASE.getReferencePiece()
     if(!lastSheetsPiece) return ''
-    console.log("获取到的参考表格数据", lastSheetsPiece)
     return getTablePromptByPiece(lastSheetsPiece, isPureData)
 }
 
@@ -205,10 +200,10 @@ export function getTablePromptByPiece(piece, isPureData = false) {
     const {hash_sheets} = piece
     const sheets = BASE.hashSheetsToSheets(hash_sheets)
         .filter(sheet => sheet.enable)
-        .filter(sheet => sheet.sendToContext !== false);
-    console.log("构建提示词时的信息 (已过滤)", hash_sheets, sheets)
+        .map((sheet, index) => ({ sheet, index }))
+        .filter(({ sheet }) => sheet.sendToContext !== false);
     const customParts = isPureData ? ['title', 'headers', 'rows'] : ['title', 'node', 'headers', 'rows', 'editRules'];
-    const sheetDataPrompt = sheets.map((sheet, index) => sheet.getTableText(index, customParts, piece)).join('\n')
+    const sheetDataPrompt = sheets.map(({ sheet, index }) => sheet.getTableText(index, customParts, piece)).join('\n')
     return sheetDataPrompt
 }
 
@@ -281,18 +276,52 @@ function parseArgs(argsPart) {
  * @returns 单条执行语句数组
  */
 function handleTableEditTag(matches) {
-    const functionRegex = /(updateRow|insertRow|deleteRow)\(/g;
     let A = [];
     for (const input of matches) {
-        functionRegex.lastIndex = 0; // 重置正则状态，避免跨输入残留
-        let match;
         const positions = [];
-        while ((match = functionRegex.exec(input)) !== null) {
-            positions.push({
-                start: match.index,
-                name: match[1].replace("Row", ""), // 转换成 update/insert/delete
-                afterParen: match.index + match[0].length, // '(' 之后的起点
-            });
+        // Do not treat function names embedded in a quoted cell value as commands.
+        let quote = null, escaped = false;
+        for (let i = 0; i < input.length; i++) {
+            const ch = input[i];
+            if (quote) {
+                if (escaped) escaped = false;
+                else if (ch === '\\') escaped = true;
+                else if (ch === quote) quote = null;
+                continue;
+            }
+            if (ch === '"' || ch === "'" || ch === '“') {
+                quote = ch === '“' ? '”' : ch;
+                continue;
+            }
+            if (i && /[\w$]/.test(input[i - 1])) continue;
+            const match = /^(updateRow|insertRow|deleteRow)\s*[(（]/.exec(input.slice(i));
+            if (match) {
+                positions.push({ start: i, name: match[1].replace('Row', ''), afterParen: i + match[0].length });
+                i += match[0].length - 1;
+            }
+        }
+
+        // Some models return a JSON operation rather than a function call.
+        if (!positions.length) {
+            const jsonText = input.trim().replace(/^<!--\s*|\s*-->$/g, '').trim()
+                .replace(/^```(?:json)?\s*|\s*```$/gi, '').trim();
+            try {
+                const parsed = JSON.parse(jsonText);
+                const operations = Array.isArray(parsed) ? parsed : (parsed.operations || [parsed]);
+                if (Array.isArray(operations)) {
+                    for (const op of operations) {
+                        const name = String(op?.type || op?.operation || op?.action || '').replace(/Row$/, '');
+                        if (!['insert', 'update', 'delete'].includes(name)) {
+                            A.push({ type: 'invalid', param: [], index: 0, length: input.length });
+                            continue;
+                        }
+                        const param = [String(op.tableIndex)];
+                        if (name !== 'insert') param.push(String(op.rowIndex));
+                        if (name !== 'delete') param.push(JSON.stringify(op.data ?? null));
+                        A.push({ type: name, param, index: 0, length: input.length });
+                    }
+                }
+            } catch (_) { /* Not JSON; normal empty tableEdit is allowed. */ }
         }
 
         for (let p = 0; p < positions.length; p++) {
@@ -313,14 +342,18 @@ function handleTableEditTag(matches) {
                     else if (c === quote) inStr = false;
                 } else {
                     if (c === '"' || c === "'" || c === '“') { inStr = true; quote = c === '“' ? '”' : c; }
-                    else if (c === '(') depth++;
-                    else if (c === ')') depth--;
+                    else if (c === '(' || c === '（') depth++;
+                    else if (c === ')' || c === '）') depth--;
                 }
                 j++;
             }
 
-            // 未找到匹配右括号时，退回使用函数边界作为结尾
-            const argsEnd = depth > 0 ? sliceEnd : j - 1;
+            // A truncated command must never be applied as a partial edit.
+            if (depth > 0) {
+                A.push({ type: 'invalid', param: [], index: pos.start, length: sliceEnd - pos.start });
+                continue;
+            }
+            const argsEnd = j - 1;
             const argsPart = input.slice(pos.afterParen, Math.max(pos.afterParen, argsEnd));
 
             const args = parseArgs(argsPart);
@@ -329,11 +362,15 @@ function handleTableEditTag(matches) {
                 type: pos.name,
                 param: args,
                 index: pos.start,
-                length: (depth > 0 ? sliceEnd : j) - pos.start,
+                length: j - pos.start,
             });
         }
     }
     return A;
+}
+
+export function countTableEditActions(matches) {
+    return handleTableEditTag(matches).length;
 }
 
 /**
@@ -346,8 +383,58 @@ function isTableEditStrChanged(chat, matches) {
     if (chat.tableEditMatches != null && chat.tableEditMatches.join('') === matches.join('')) {
         return false
     }
-    chat.tableEditMatches = matches
     return true
+}
+
+// Validate the entire batch before applying any operation, including row indices
+// after the existing operation ordering has been applied.
+function validateTableEditActions(actions, sheets) {
+    const counts = sheets.map(sheet => sheet.getRowCount() - 1);
+    for (const item of actions) {
+        const action = item.action || {};
+        if (!Number.isInteger(action.tableIndex) || action.tableIndex < 0 || !sheets[action.tableIndex])
+            return '表格编号无效';
+        const sheet = sheets[action.tableIndex];
+        if (item.type !== 'insert' && (!Number.isInteger(action.rowIndex) || action.rowIndex < 0 || action.rowIndex >= counts[action.tableIndex]))
+            return '行编号无效';
+        if (item.type !== 'delete') {
+            if (!action.data || typeof action.data !== 'object' || Array.isArray(action.data) || !Object.keys(action.data).length)
+                return '缺少有效的单元格数据';
+            const width = sheet.hashSheet?.[0]?.length - 1;
+            if (!Number.isInteger(width) || Object.entries(action.data).some(([key, value]) =>
+                !/^\d+$/.test(key) || Number(key) >= width || !['string', 'number'].includes(typeof value)))
+                return '列编号或单元格数据无效';
+        }
+        if (item.type === 'insert') counts[action.tableIndex]++;
+        else if (item.type === 'delete') counts[action.tableIndex]--;
+        else if (item.type !== 'update') return '操作类型无效';
+    }
+    return null;
+}
+
+function applyTableEditActions(actions, sheets, piece) {
+    const beforeHashes = piece.hash_sheets === undefined ? undefined : JSON.parse(JSON.stringify(piece.hash_sheets));
+    let backups;
+    try {
+        const changedSheets = [...new Set(actions.map(action => sheets[action.action.tableIndex]))];
+        backups = changedSheets.map(sheet => ({ sheet, data: sheet.filterSavingData() }));
+        for (const action of actions) {
+            if (executeAction(action, sheets) === -1) throw new Error('表格操作未能完成');
+        }
+        for (const sheet of sheets) if (sheet.save(piece, true) === false) throw new Error('表格保存失败');
+        return true;
+    } catch (error) {
+        if (backups) {
+            for (const { sheet, data } of backups) {
+                try { sheet.loadJson(data); sheet.save(piece, true); }
+                catch (restoreError) { console.error('表格恢复失败', restoreError); }
+            }
+        }
+        if (beforeHashes === undefined) delete piece.hash_sheets;
+        else piece.hash_sheets = beforeHashes;
+        EDITOR.error('表格指令执行失败，已尝试恢复原数据。', error.message, error);
+        return false;
+    }
 }
 
 /**
@@ -383,21 +470,27 @@ export function handleEditStrInMessage(chat, mesIndex = -1, ignoreCheck = false)
 export function parseTableEditTag(piece, mesIndex = -1, ignoreCheck = false) {
     const { matches } = getTableEditTag(piece.mes)
     if (!ignoreCheck && !isTableEditStrChanged(piece, matches)) return false
+    if (!matches.length && !ignoreCheck) {
+        EDITOR.warning('本条回复没有完整的 tableEdit 标签；如果应当填表，请检查模型输出或回复是否截断。');
+    }
     const tableEditActions = handleTableEditTag(matches)
     tableEditActions.forEach((action, index) => tableEditActions[index].action = classifyParams(formatParams(action.param)))
-    console.log("解析到的表格编辑指令", tableEditActions)
+    if (!tableEditActions.length && matches.some(m => m.replace(/<!--|-->/g, '').trim())) {
+        EDITOR.warning('表格指令无法识别，请检查 tableEdit 内的格式。');
+        return false;
+    }
 
     // 获取上一个表格数据
     const { piece: prePiece } = mesIndex === -1 ? BASE.getLastSheetsPiece(1) : BASE.getLastSheetsPiece(mesIndex - 1, 1000, false)
-    const sheets = BASE.hashSheetsToSheets(prePiece.hash_sheets).filter(sheet => sheet.enable)
-    console.log("执行指令时的信息", sheets)
-    for (const EditAction of sortActions(tableEditActions)) {
-        executeAction(EditAction, sheets)
+    const sheets = BASE.hashSheetsToSheets(prePiece?.hash_sheets).filter(sheet => sheet.enable)
+    const sorted = sortActions(tableEditActions);
+    const error = validateTableEditActions(sorted, sheets);
+    if (error) {
+        EDITOR.warning(`表格指令未执行：${error}`);
+        return false;
     }
-    sheets.forEach(sheet => sheet.save(piece, true))
-    console.log("聊天模板：", BASE.sheetsData.context)
-    console.log("获取到的表格数据", prePiece)
-    console.log("测试总chat", USER.getContext().chat)
+    if (!applyTableEditActions(sorted, sheets, piece)) return false;
+    piece.tableEditMatches = matches;
     return true
 }
 
@@ -406,9 +499,17 @@ export function parseTableEditTag(piece, mesIndex = -1, ignoreCheck = false) {
  * @param {string[]} matches 编辑指令字符串
  */
 export function executeTableEditActions(matches, referencePiece) {
+    const { piece: currentPiece } = USER.getChatPiece();
+    if (!currentPiece || (referencePiece && currentPiece !== referencePiece)) {
+        EDITOR.warning('聊天已变化，表格指令未执行。');
+        return false;
+    }
     const tableEditActions = handleTableEditTag(matches)
     tableEditActions.forEach((action, index) => tableEditActions[index].action = classifyParams(formatParams(action.param)))
-    console.log("解析到的表格编辑指令", tableEditActions)
+    if (!tableEditActions.length && matches.some(m => m.replace(/<!--|-->/g, '').trim())) {
+        EDITOR.warning('表格指令无法识别，请检查 tableEdit 内的格式。');
+        return false;
+    }
 
     // 核心修复：不再信任传入的 referencePiece.hash_sheets，而是直接从 BASE 获取当前激活的、唯一的 Sheet 实例。
     const sheets = BASE.getChatSheets().filter(sheet => sheet.enable)
@@ -417,21 +518,14 @@ export function executeTableEditActions(matches, referencePiece) {
         return false;
     }
 
-    console.log("执行指令时的信息 (来自 BASE.getChatSheets)", sheets)
-    for (const EditAction of sortActions(tableEditActions)) {
-        executeAction(EditAction, sheets)
-    }
-
-    // 核心修复：确保修改被保存到当前最新的聊天片段中。
-    const { piece: currentPiece } = USER.getChatPiece();
-    if (!currentPiece) {
-        console.error("executeTableEditActions: 无法获取当前聊天片段，保存操作失败。");
+    const sorted = sortActions(tableEditActions);
+    const error = validateTableEditActions(sorted, sheets);
+    if (error) {
+        EDITOR.warning(`表格指令未执行：${error}`);
         return false;
     }
-    sheets.forEach(sheet => sheet.save(currentPiece, true))
+    if (!applyTableEditActions(sorted, sheets, currentPiece)) return false;
 
-    console.log("聊天模板：", BASE.sheetsData.context)
-    console.log("测试总chat", USER.getContext().chat)
     return true // 返回 true 表示成功
 }
 
@@ -454,11 +548,11 @@ function executeAction(EditAction, sheets) {
         case 'update':
             // 执行更新操作
             const rowIndex = action.rowIndex ? parseInt(action.rowIndex):0
-            if(rowIndex >= sheet.getRowCount()-1) return executeAction({...EditAction, type:'insert'}, sheets)
+            if(rowIndex < 0 || rowIndex >= sheet.getRowCount()-1) return -1;
             if(!action?.data) return
             Object.entries(action.data).forEach(([key, value]) => {
                 const cell = sheet.findCellByPosition(rowIndex + 1, parseInt(key) + 1)
-                if (!cell) return -1
+                if (!cell) throw new Error('未找到要更新的单元格');
                 cell.newAction(Cell.CellAction.editCell, { value }, false)
             })
             break
@@ -484,7 +578,6 @@ function executeAction(EditAction, sheets) {
             cell.newAction(Cell.CellAction.deleteSelfRow, {}, false)
             break
     }
-    console.log("执行表格编辑操作", EditAction)
     return 1
 }
 
@@ -518,13 +611,6 @@ function formatParams(paramArray) {
         }
         if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
             const parsed = parseLooseDict(trimmed);
-            if (typeof parsed === 'object' && parsed !== null) {
-                Object.keys(parsed).forEach(key => {
-                    if (!/^\d+$/.test(key)) {
-                        delete parsed[key];
-                    }
-                });
-            }
             return parsed;
         }
 
@@ -636,7 +722,6 @@ async function onChatCompletionPromptReady(eventData) {
                     } else {
                         eventData.chat.splice(-USER.tableBaseSetting.deep, 0, { role: getMesRole(), content: finalPrompt });
                     }
-                    console.log("分步填表模式：注入只读表格数据", eventData.chat);
                 }
             }
             return; // 处理完分步模式后直接退出，不执行后续的常规注入
@@ -650,7 +735,6 @@ async function onChatCompletionPromptReady(eventData) {
             return;
         }
 
-        console.log("生成提示词前", USER.getContext().chat)
         const promptContent = initTableData(eventData)
         if (USER.tableBaseSetting.deep === 0)
             eventData.chat.push({ role: getMesRole(), content: promptContent })
@@ -661,7 +745,6 @@ async function onChatCompletionPromptReady(eventData) {
     } catch (error) {
         EDITOR.error(`记忆插件：表格数据注入失败\n原因：`,error.message, error);
     }
-    console.log("注入表格总体提示词", eventData.chat)
 }
 
 /**
@@ -722,7 +805,7 @@ function trimString(str) {
  */
 
 export function getTableEditTag(mes) {
-    const regex = /<tableEdit>(.*?)<\/tableEdit>/gs;
+    const regex = /<tableEdit\b[^>]*>(.*?)<\/tableEdit\s*>/gis;
     const matches = [];
     let match;
     while ((match = regex.exec(mes)) !== null) {
@@ -858,7 +941,6 @@ async function onChatChanged() {
 async function onMessageSwiped(chat_id) {
     if (USER.tableBaseSetting.isExtensionAble === false || USER.tableBaseSetting.isAiWriteTable === false) return
     const chat = USER.getContext().chat[chat_id];
-    console.log("滑动切换消息", chat)
     if (!chat.swipe_info[chat.swipe_id]) return
     try {
         handleEditStrInMessage(chat)
@@ -875,7 +957,6 @@ async function onMessageSwiped(chat_id) {
 export async function undoSheets(deep) {
     const {piece, deep:findDeep} = BASE.getLastSheetsPiece(deep)
     if(findDeep === -1) return
-    console.log("撤回表格数据", piece, findDeep)
     handleEditStrInMessage(piece, findDeep, true)
     updateSheetsView()
 }
@@ -936,7 +1017,7 @@ jQuery(async () => {
     }
 
     // 版本检查
-    fetch("https://raw.githubusercontent.com/muyoou/st-memory-enhancement/refs/heads/master/manifest.json", {
+    fetch("https://raw.githubusercontent.com/cjhkcjgk3-sys/st-memory-enhancement/refs/heads/master/manifest.json", {
         method: "GET",
         cache: "no-cache"
     }).then(res => res.json()).then(res => {
@@ -950,7 +1031,7 @@ jQuery(async () => {
                 $("#table_message_tip").html("插件已升级到" + VERSION + "最新版。如果插件对您有帮助，可以给我们的Github仓库一个星星支持下我们~ 交流&更新&Bug反馈群QQ 1030109849")
             }
         }
-    })
+    }).catch(() => console.warn('无法检查插件版本，请稍后重试。'));
 
     $('.extraMesButtons').append('<div title="查看表格" class="mes_button open_table_by_id">表格</div>');
 
@@ -971,7 +1052,7 @@ jQuery(async () => {
     $('#extensions-settings-button').after(await SYSTEM.getTemplate('appHeaderTableDrawer'));
 
     // 应用程序启动时加载设置
-    loadSettings();
+    await loadSettings();
 
     // 表格弹出窗
     $(document).on('click', '.open_table_by_id', function () {

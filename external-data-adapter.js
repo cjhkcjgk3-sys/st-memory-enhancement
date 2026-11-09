@@ -10,7 +10,7 @@
  * @date 2025-10-05
  */
 
-import { executeTableEditActions, getTableEditTag, updateSheetsView } from './index.js';
+import { countTableEditActions, executeTableEditActions, getTableEditTag, updateSheetsView } from './index.js';
 import { BASE, USER } from './core/manager.js';
 
 /**
@@ -219,10 +219,11 @@ const adapter = {
             if (result) {
                 // 关键修复1：保存聊天数据到文件，确保数据持久化
                 try {
-                    USER.saveChat();
+                    await USER.saveChat();
                     logger.debug('聊天数据已保存到文件');
                 } catch (saveError) {
                     logger.warn('保存聊天数据失败', saveError);
+                    return { success: false, message: '表格已在内存中修改，但聊天保存失败，请检查后重试。' };
                 }
 
                 // 关键修复2：刷新表格视图，确保界面更新
@@ -239,7 +240,7 @@ const adapter = {
                     success: true,
                     message: '数据处理成功',
                     data: {
-                        operationsExecuted: matches.length,
+                        operationsExecuted: countTableEditActions(matches),
                         totalOperations: adapterState.operationCount
                     }
                 };
@@ -285,10 +286,11 @@ const adapter = {
             if (result) {
                 // 关键修复1：保存聊天数据到文件，确保数据持久化
                 try {
-                    USER.saveChat();
+                    await USER.saveChat();
                     logger.debug('聊天数据已保存到文件');
                 } catch (saveError) {
                     logger.warn('保存聊天数据失败', saveError);
+                    return { success: false, message: '表格已在内存中修改，但聊天保存失败，请检查后重试。' };
                 }
 
                 // 关键修复2：刷新表格视图，确保界面更新

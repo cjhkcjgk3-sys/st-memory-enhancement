@@ -85,7 +85,6 @@ export const USER = {
             USER.getSettings().table_database_templates = templates;
             USER.saveSettings();
         }
-        console.log("全局模板", templates)
         return templates;
     },
     tableBaseSetting: createProxyWithUserSetting('muyoo_dataTable'),
@@ -215,7 +214,6 @@ export const BASE = {
         if(type === 'data') return BASE.saveChatSheets()
         const oldSheets = BASE.getChatSheets().filter(sheet => !newSheets.some(newSheet => newSheet.uid === sheet.uid))
         oldSheets.forEach(sheet => sheet.enable = false)
-        console.log("应用表格数据", newSheets, oldSheets)
         const mergedSheets = [...newSheets, ...oldSheets]
         BASE.reSaveAllChatSheets(mergedSheets)
     },
@@ -254,14 +252,12 @@ export const BASE = {
             direction === 'up' ? i-- : i++) {
             if (chat[i].is_user === true) continue; // 跳过用户消息
             if (chat[i].hash_sheets) {
-                console.log("向上查询表格数据，找到表格数据", chat[i])
                 return { deep: i, piece: chat[i] }
             }
             // 如果没有找到新系统的表格数据，则尝试查找旧系统的表格数据（兼容模式）
             // 请注意不再使用旧的Table类
             if (chat[i].dataTable) {
                 // 为了兼容旧系统，将旧数据转换为新的Sheet格式
-                console.log("找到旧表格数据", chat[i])
                 convertOldTablesToNewSheets(chat[i].dataTable, chat[i])
                 return { deep: i, piece: chat[i] }
             }
@@ -270,7 +266,6 @@ export const BASE = {
     },
     getReferencePiece(){
         const swipeInfo = USER.isSwipe()
-        console.log("获取参考片段", swipeInfo)
         const {piece} = swipeInfo.isSwipe?swipeInfo.deep===-1?{piece:BASE.initHashSheet()}: BASE.getLastSheetsPiece(swipeInfo.deep-1,1000,false):BASE.getLastSheetsPiece()
         return piece
     },

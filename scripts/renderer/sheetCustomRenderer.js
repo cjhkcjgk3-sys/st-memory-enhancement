@@ -1,7 +1,13 @@
 import { BASE, DERIVED, EDITOR, SYSTEM, USER } from '../../core/manager.js';
+import { escapeHtml } from '../../utils/escapeHtml.js';
 let sheet = null;
 let config = {};
 let selectedCustomStyle = null;
+
+function safeCellValue(value) {
+    const name = USER.getContext().name1 ?? '';
+    return escapeHtml(String(value ?? '').replace(/<user>/g, () => name));
+}
 
 function staticPipeline(target) {
     console.log("进入静态渲染表格");
@@ -14,13 +20,13 @@ function staticPipeline(target) {
         const sheets = BASE.getChatSheets();
         const sheet = sheets.find(s => s.name === tableName);
         if (!sheet) {
-            return `<span style="color: red">[GET: 未找到表格 "${tableName}"]</span>`;
+            return `<span style="color: red">[GET: 未找到表格 "${escapeHtml(tableName)}"]</span>`;
         }
 
         try {
             const cell = sheet.getCellFromAddress(cellAddress);
             const cellValue = cell ? cell.data.value : undefined;
-            return cellValue !== undefined ? cellValue : `<span style="color: orange">[GET: 在 "${tableName}" 中未找到单元格 "${cellAddress}"]</span>`;
+            return cellValue !== undefined ? safeCellValue(cellValue) : `<span style="color: orange">[GET: 在 "${escapeHtml(tableName)}" 中未找到单元格 "${cellAddress}"]</span>`;
         } catch (error) {
             console.error(`Error resolving GET macro for ${tableName}:${cellAddress}`, error);
             return `<span style="color: red">[GET: 处理时出错]</span>`;
@@ -32,11 +38,11 @@ function staticPipeline(target) {
         const sheets = BASE.getChatSheets();
         const sheet = sheets.find(s => s.name === tableName);
         if (!sheet) {
-            return `<span style="color: red">未找到表格: ${tableName}</span>`;
+            return `<span style="color: red">未找到表格: ${escapeHtml(tableName)}</span>`;
         }
         
         const cell = sheet.getCellFromAddress(cellAddress);
-        return cell ? (cell.data.value || `?`) :
+        return cell ? safeCellValue(cell.data.value ?? '?') :
             `<span style="color: red">无单元格: ${cellAddress}</span>`;
     });
 
@@ -46,8 +52,7 @@ function staticPipeline(target) {
         const rowIndex = parseInt(rowNumber);
         console.log("静态渲染行:", rowIndex, "静态渲染列:", colIndex);
         const c = target.findCellByPosition(rowIndex, colIndex);
-        console.log("获取单元格位置：", c, '\n获取单元格内容：', c.data.value);
-        return c ? (c.data.value || `<span style="color: red">?</span>`) :
+        return c ? safeCellValue(c.data.value ?? '') :
             `<span style="color: red">无单元格</span>`;
     });
 }
@@ -263,6 +268,9 @@ export function initializeText(target, selectedStyle) {
         valueSheet = triggerValueSheet(valueSheet, target.config.skipTop, target.config.alternateTable);
         // console.log(target.name + "检索后valueSheet是否为数组：" + Array.isArray(valueSheet) + "\n检索后valueSheet最后是什么：" + valueSheet);
     }
+    // Values originate in chats and model output; only the style itself is trusted.
+    valueSheet = (Array.isArray(valueSheet) ? valueSheet : []).map(row =>
+        Array.isArray(row) ? row.map(value => safeCellValue(value)) : []);
     const method = selectedStyle.basedOn || 'array';
     switch (method) {
         case 'array':
